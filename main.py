@@ -23,23 +23,20 @@ access_token = None
 
 USE_CONTEXT_GENERATOR = False
 
+# Get the data products for the organization
 def get_data_products(data_product_id):
     url = f'https://console.snowplowanalytics.com/api/msc/v1/organizations/{organization_id}/data-products/v2/{data_product_id}'
 
-    headers = {
-        'authorization': f'Bearer {access_token}'
-    }
+    headers = {'authorization': f'Bearer {access_token}'}
 
     response = requests.get(url, headers=headers)
 
     if response.status_code == 200:
-        with open('./output/data_product.json', 'w') as f:
-            json.dump(response.json(), f)
-
         return response.json()
     else:
         print(f'Error: {response.status_code}')
 
+# Generate a hash of the schema to use as a key required by the Snowplow API
 def generate_schema_hash(schema):
     schema_parts = re.split('[:/]', schema)
     schema_hash = '-'.join(schema_parts[1:-1])
@@ -47,6 +44,7 @@ def generate_schema_hash(schema):
     schema_hash = hashlib.sha256(schema_hash.encode()).hexdigest()
     return schema_hash
 
+# Get the schema for a given Iglu URL - Doesn't work for Iglu Central schemas as they are not in the Snowplow Console
 def get_schema(schema):
     schema_hash = generate_schema_hash(schema)
     url = f'https://console.snowplowanalytics.com/api/msc/v1/organizations/{organization_id}/data-structures/v1/{schema_hash}'
@@ -68,6 +66,38 @@ def get_schema(schema):
     
     return response.json()
 
+def fetch_schemas_from_data_product(data_product_json):
+    event_specs = data_product_json['includes']['eventSpecs']
+    entity_event_map = {}
+    entity_lookup = {}
+    
+
+    for event_spec in event_specs:
+        event_spec_event_schema = get_schema(event_spec['event']['source'])
+
+        for property in event_spec_event_schema['properties']:
+            if 'schema' in event_spec['event'] and property in event_spec['event']['schema']['properties']:
+                property_object = event_spec['event']['schema']['properties'][property]
+            else:
+                property_object = event_spec_event_schema['properties'][property]
+        
+        event_spec['event']['schema'] = event_spec_event_schema # Add the schema to the event spec in the data product JSON
+
+        if 'entities' in event_spec and 'tracked' in event_spec['entities']:
+            for entity in event_spec['entities']['tracked']:
+                if entity['source'] in entity_event_map:
+                    entity['schema'] = entity_lookup[entity['source']]
+                    entity_event_map[entity['source']].append(event_spec['name'])
+                else:
+                    entity['schema'] = get_schema(entity['source'])
+                    entity_lookup[entity['source']] = entity['schema']
+                    entity_event_map[entity['source']] = [event_spec['name']]
+    
+    with open('./output/data_product.json', 'w') as f:
+            json.dump(data_product_json, f)
+
+    return data_product_json
+
 def get_api_token(organization_id, api_key_id, api_key):
     url = f'https://console.snowplowanalytics.com/api/msc/v1/organizations/{organization_id}/credentials/v3/token'
 
@@ -86,10 +116,11 @@ def get_api_token(organization_id, api_key_id, api_key):
     
 def create_gtm_template_parameters(data_product_json):
     event_specs = data_product_json['includes']['eventSpecs']
+
     select_items = []
     event_spec_parameters = []
-    entities_processed = []
     entity_event_map = {}
+    entity_schemas = {}
 
     for event_spec in event_specs:
         select_items.append({
@@ -99,19 +130,13 @@ def create_gtm_template_parameters(data_product_json):
 
         sub_parameters = []
 
-        event_spec_event_schema = get_schema(event_spec['event']['source'])
-
-        # if not 'schema' in event_spec['event']:
-        #     event_spec['event']['schema'] = get_schema(event_spec['event']['source'])
+        event_spec_event_schema = event_spec['event']['schema']
 
         for property in event_spec_event_schema['properties']:
-            if 'schema' in event_spec['event'] and property in event_spec['event']['schema']['properties']:
-                property_object = event_spec['event']['schema']['properties'][property]
-            else:
-                property_object = event_spec_event_schema['properties'][property]
-
+            property_object = event_spec['event']['schema']['properties'][property]
             display_name = f'{property}'
-
+            required = True if 'required' in event_spec_event_schema and property in event_spec_event_schema['required'] else False
+            
             if 'enum' in property_object:
                 display_name += f" ({property_object['enum']})"
                 sub_parameters.append({
@@ -125,7 +150,7 @@ def create_gtm_template_parameters(data_product_json):
                 sub_parameters.append({
                     "type": "TEXT",
                     "name": f"{event_spec['name']}|{property}",
-                    "displayName": property + f" ({property_object['type']})",
+                    "displayName": property + f" ({property_object['type']})" + (' * Required ' if required else ''),
                     "simpleValueType": True
                 })
 
@@ -134,7 +159,9 @@ def create_gtm_template_parameters(data_product_json):
             for entity in event_spec['entities']['tracked']:
                 if entity['source'] in entity_event_map:
                     entity_event_map[entity['source']].append(event_spec['name'])
+                    entity_schemas[entity['source']] = entity['schema']
                 else:
+                    entity_schemas[entity['source']] = entity['schema']
                     entity_event_map[entity['source']] = [event_spec['name']]
 
         event_spec_enabling_condition = [{
@@ -152,20 +179,11 @@ def create_gtm_template_parameters(data_product_json):
             "enablingConditions": event_spec_enabling_condition
         })
 
-        # event_spec_parameters.append({
-        #     "type": "GROUP",
-        #     "name": event_spec['name'] + '_entities',
-        #     "displayName": f"{event_spec['name']} Entities",
-        #     "groupStyle": "ZIPPY_OPEN",
-        #     "subParams": entity_parameters,
-        #     "enablingConditions": enabling_condition
-        # })
-
     for entity in entity_event_map:
         entity_parameters = []
         source_parts = '/'.join(entity.split('/')[1:])
-        entity_schema = get_schema(entity)
-
+        entity_schema = entity_schemas[entity]
+        
         entity_parameters.append({
             "type": "LABEL",
             "name": f"{entity_schema['self']['name']}_context_generator_label",
@@ -189,12 +207,13 @@ def create_gtm_template_parameters(data_product_json):
         entity_parameters.append({
             "type": "LABEL",
             "name": f"{entity_schema['self']['name']}_fields_label",
-            "displayName": f"Use the fields below to create a single entity."
+            "displayName": f"Use the fields below to create a single entity. * Required fields"
         })
 
         for property in entity_schema['properties']:
             display_name = property
             property_object = entity_schema['properties'][property]
+            required = True if 'required' in entity_schema and property in entity_schema['required'] else False
 
             if 'enum' in property_object:
                 display_name += f" ({property_object['enum']})"
@@ -210,7 +229,7 @@ def create_gtm_template_parameters(data_product_json):
                 entity_parameters.append({
                     "type": "TEXT",
                     "name": f"{entity_schema['self']['name']}|{property}",
-                    "displayName": property + f" ({property_object['type']})",
+                    "displayName": property + f" ({property_object['type']})" + (' * ' if required else ''),
                     "simpleValueType": True
                 })
 
@@ -252,22 +271,13 @@ def create_gtm_template_parameters(data_product_json):
                 event_entity_map[event].append(entity_name)
             else:
                 event_entity_map[event] = [entity_name]
-    
+
     return data_product_json,event_entity_map
 
 def convert_to_camel_case(text):
     return ''.join([x.capitalize() for x in re.split('[_ -]', text)])
 
 # Creates the GTM template code based on the data product JSON
-# The code should be a switch statement that calls the appropriate function
-# The function call should be in the format: callInWindow('__snowtype.trackXXX', {'button_label':'test'});
-# Where the XXX is event spec name without spaces and the event source converted to camel case
-# Example:
-# switch (data.eventSpec) {
-#   case 'Bad Button Click':
-#     callInWindow('__snowtype.trackJbCustomButtonClickBadButtonClick',
-#                  {'button_label':'test'});
-# }
 def create_gtm_template_code(data_product_json,event_entity_map):
 
     event_specs = data_product_json['includes']['eventSpecs']
@@ -297,23 +307,36 @@ def create_gtm_template_code(data_product_json,event_entity_map):
 
         event_spec_event_schema = get_schema(event_spec['event']['source'])
         
+        # Generate JavaScript code to create the properties object
         properties_code = '{'
         for property in event_spec_event_schema['properties']:
             properties_code += f"'{property}':data['{event_spec_name}|{property}'],"
         properties_code += 'context: context}'
 
+        # Generate JavaScript code to create the context object for a single entity
+        event_spec_entities = [x for x in event_specs if x['name'] == event_spec['name']][0]['entities']['tracked']
+        manual_context_code = ''
+        for entity in event_spec_entities:
+            entity_name = entity['schema']['self']['name']
+            manual_context_code += f'var {entity_name}_context = ' + '{};'
+            for property in entity['schema']['properties']:
+                manual_context_code += f"data['{entity_name}|{property}'] != 'undefined' ? {entity_name}_context['{property}'] = data['{entity_name}|{property}'] : null;\n"
+
+        # Generate JavaScript code to create the context object for multiple entities
         context_code = ''
         for entity in event_entity_map[event_spec_name]:
-            context_code += f"data['{entity}|context_generator'] != 'no' ? context = context.concat(data['{entity}|context_generator']) : null;\n"
+            entity_source = [x for x in event_spec_entities if x['schema']['self']['name'] == entity][0]['source']
+            context_code += f"data['{entity}|context_generator'] != 'no' ? context = context.concat(data['{entity}|context_generator']) : context = context.concat([{{'schema': '{entity_source}','data': {entity}_context}}]);\n"
 
+        # Format the code into a switch statement case
         formatted_code = f"case '{event_spec_name}':\n\
             var context = [];\n\
+            {manual_context_code};\n\
             {context_code}\n\
             callInWindow('__snowtype.track{event_source_camel_case}{event_spec_name_camel_case}',\n\
             {properties_code});break;\n"
 
         persmissions_key_str = '{"type":3,"mapKey":[{"type":1,"string":"key"},{"type":1,"string":"read"},{"type":1,"string":"write"},{"type":1,"string":"execute"}],"mapValue":[{"type":1,"string":"' + f'__snowtype.track{event_source_camel_case}{event_spec_name_camel_case}' + '"},{"type":8,"boolean":true},{"type":8,"boolean":true},{"type":8,"boolean":true}]}'
-        
         permission_keys.append(persmissions_key_str)
 
         output_code += formatted_code
@@ -325,6 +348,7 @@ def create_gtm_template_code(data_product_json,event_entity_map):
 
     return permission_keys
 
+# Create the permissions JSON for the GTM template
 def create_gtm_template_permissions(permission_keys):
     
     with open('./permissions_template.json', 'r') as f:
@@ -384,10 +408,10 @@ def combine_gtm_template_files(data_product_json):
         f.write(output)
 
 
-
-
+# Run the entire process of creating the GTM template
 def run_template_creation(data_product_id):
     data_product_json = get_data_products(data_product_id)
+    data_product_json = fetch_schemas_from_data_product(data_product_json)
     data_product_json,event_entity_map = create_gtm_template_parameters(data_product_json)
     permission_keys = create_gtm_template_code(data_product_json,event_entity_map)
     create_gtm_template_permissions(permission_keys)
@@ -396,10 +420,14 @@ def run_template_creation(data_product_id):
 if __name__ == '__main__':
     access_token = get_api_token(organization_id, api_key_id, api_key)
 
-    data_product_id = 'd5f1fbb3-e03a-4f31-be7d-a5ca15c98fa3' # Growth
+    #data_product_id = 'd5f1fbb3-e03a-4f31-be7d-a5ca15c98fa3' # Growth
     #data_product_id = 'b6ace794-980f-42e1-8c17-51441111c912' # Media
     #data_product_id = 'a42cc8e6-7ef9-4433-853d-1c23995f4afe' # JB test
-    #data_product_id = 'ff5bd446-25eb-4aaf-bb8e-ded18b2fff15'
+    data_product_id = 'ff5bd446-25eb-4aaf-bb8e-ded18b2fff15' # JB ecommerce demo
 
+    # output =  (fetch_schemas_from_data_product(get_data_products(data_product_id)))
+
+    # with open('./output/data_product.json', 'w') as f:
+    #     json.dump(output, f)
     run_template_creation(data_product_id)
     
