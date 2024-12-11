@@ -62,11 +62,9 @@ def get_schema(schema):
             print(f'Error: {response.status_code}')
 
     elif response.status_code == 404:
-        print('Schema not found in Snowplow Console - trying Iglu Central')
         # Try Iglu Central
         schema = schema.removeprefix('iglu:')
         url = f'http://iglucentral.com/schemas/{schema}'
-        print(url)
         response = requests.get(url)
 
         if response.status_code != 200:
@@ -393,6 +391,10 @@ def combine_gtm_template_files(data_product_json):
     with open('./output/gtm_template_parameters.json', 'r') as f:
         gtm_template_parameters = json.load(f)
     
+    if str(gtm_template_parameters).count('displayName') > 100:
+        print('Error: GTM template parameters contains over 100 fields - Please reduce the complexity of the data product and try again.')
+        sys.exit(1)
+
     with open('./output/gtm_template_code.js', 'r') as f:
         gtm_template_code = f.read()
 
@@ -451,7 +453,7 @@ if __name__ == '__main__':
     #data_product_id = 'b6ace794-980f-42e1-8c17-51441111c912' # Media
     #data_product_id = 'a42cc8e6-7ef9-4433-853d-1c23995f4afe' # JB test
     data_product_id = 'ff5bd446-25eb-4aaf-bb8e-ded18b2fff15' # JB ecommerce demo
-    data_product_id = 'ac1d723c-a47a-4126-b47e-470ea1f4af0e'
+    data_product_id = 'b675cefe-3be1-4d55-9538-c017c4dd6f3f'
 
     # output =  (fetch_schemas_from_data_product(get_data_products(data_product_id)))
 
