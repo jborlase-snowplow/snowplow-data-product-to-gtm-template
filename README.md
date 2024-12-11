@@ -21,6 +21,12 @@ API_KEY=XXX
    `python3.11 ./main.py YOUR-DATA-PRODUCT-ID`
 
 4. Within Google Tag Manager, go to templates
+   
+5. Click 'New' under tag templates, and then under the 3 dots in the top-right corner click 'Import'
+
+6. Select the gtm_template.tpl file your script created.
+
+7. Click 'Save' - and you will now be able to use your new tag inside Google Tag Manager
 
 ## Limitations
 
