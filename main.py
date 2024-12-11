@@ -357,29 +357,23 @@ def create_gtm_template_code(data_product_json,event_entity_map):
             callInWindow('snowplow','trackSelfDescribingEvent',\n\
             {{event: {{data:{properties_code},schema:'{event_source}'}}, 'context': context}});break;\n"
 
-        persmissions_key_str = '{"type":3,"mapKey":[{"type":1,"string":"key"},{"type":1,"string":"read"},{"type":1,"string":"write"},{"type":1,"string":"execute"}],"mapValue":[{"type":1,"string":"' + f'__snowtype.track{event_source_camel_case}{event_spec_name_camel_case}' + '"},{"type":8,"boolean":true},{"type":8,"boolean":true},{"type":8,"boolean":true}]}'
-        permission_keys.append(persmissions_key_str)
 
         output_code += formatted_code
 
     output_code += '}\n'
 
-    persmissions_key_str = '{"type":3,"mapKey":[{"type":1,"string":"key"},{"type":1,"string":"read"},{"type":1,"string":"write"},{"type":1,"string":"execute"}],"mapValue":[{"type":1,"string":"' + f'snowplow' + '"},{"type":8,"boolean":true},{"type":8,"boolean":true},{"type":8,"boolean":true}]}'
-    permission_keys.append(persmissions_key_str)
-
     with open('./output/gtm_template_code.js', 'w') as f:
         f.write(output_code)
 
-    return permission_keys
+    return
 
 # Create the permissions JSON for the GTM template
-def create_gtm_template_permissions(permission_keys):
+def create_gtm_template_permissions():
     
-    with open('./permissions_template.json', 'r') as f:
-        permissions_template = json.load(f)
-    
-    for key in permission_keys:
-        permissions_template[1]['instance']['param'][0]['value']['listItem'].append(json.loads(key))
+    permissions_template = '[{"instance":{"key":{"publicId":"logging","versionId":"1"},"param":[{"key":"environments","value":{"type":1,"string":"debug"}}]},"clientAnnotations":{"isEditedByUser":true},"isRequired":true},{"instance":{"key":{"publicId":"access_globals","versionId":"1"},"param":[{"key":"keys","value":{"type":2,"listItem":[]}}]},"clientAnnotations":{"isEditedByUser":true},"isRequired":true}]'
+    permissions_template = json.loads(permissions_template)
+    key = '{"type":3,"mapKey":[{"type":1,"string":"key"},{"type":1,"string":"read"},{"type":1,"string":"write"},{"type":1,"string":"execute"}],"mapValue":[{"type":1,"string":"' + f'snowplow' + '"},{"type":8,"boolean":true},{"type":8,"boolean":true},{"type":8,"boolean":true}]}'
+    permissions_template[1]['instance']['param'][0]['value']['listItem'].append(json.loads(key))
 
     with open('./output/gtm_template_permissions.json', 'w') as f:
         json.dump(permissions_template, f)
@@ -441,8 +435,8 @@ def run_template_creation(data_product_id):
     data_product_json = get_data_products(data_product_id)
     data_product_json = fetch_schemas_from_data_product(data_product_json)
     data_product_json,event_entity_map = create_gtm_template_parameters(data_product_json)
-    permission_keys = create_gtm_template_code(data_product_json,event_entity_map)
-    create_gtm_template_permissions(permission_keys)
+    create_gtm_template_code(data_product_json,event_entity_map)
+    create_gtm_template_permissions()
     combine_gtm_template_files(data_product_json)
 
 if __name__ == '__main__':
