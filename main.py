@@ -156,7 +156,7 @@ def create_gtm_template_parameters(data_product_json):
                     "type": "SELECT", 
                     "name": f"{event_spec['name']}|{property}",
                     "displayName": property,
-                    "selectItems": [{'value': item, 'displayValue': item} for item in property_object['enum']],
+                    "selectItems": [{'value': item if item != None else 'null', 'displayValue': item if item != None else 'null'} for item in property_object['enum']],
                     "simpleValueType": True
                 })
             else:
@@ -234,7 +234,7 @@ def create_gtm_template_parameters(data_product_json):
                     "type": "SELECT", 
                     "name": f"{entity_schema['self']['name']}|{property}",
                     "displayName": property,
-                    "selectItems": [{'value': item, 'displayValue': item} for item in property_object['enum']],
+                    "selectItems": [{'value': item if item != None else 'null', 'displayValue': item if item != None else 'null'} for item in property_object['enum']],
                     "simpleValueType": True,
                     "macrosInSelect": True
                 })
@@ -451,7 +451,7 @@ if __name__ == '__main__':
     #data_product_id = 'b6ace794-980f-42e1-8c17-51441111c912' # Media
     #data_product_id = 'a42cc8e6-7ef9-4433-853d-1c23995f4afe' # JB test
     data_product_id = 'ff5bd446-25eb-4aaf-bb8e-ded18b2fff15' # JB ecommerce demo
-    data_product_id = 'b675cefe-3be1-4d55-9538-c017c4dd6f3f'
+    data_product_id = 'ac1d723c-a47a-4126-b47e-470ea1f4af0e'
 
     # output =  (fetch_schemas_from_data_product(get_data_products(data_product_id)))
 
