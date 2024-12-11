@@ -30,7 +30,7 @@ API_KEY=XXX
 
 ## Limitations
 
-1. Google Tag Manager Tags are limited to having a 100 fields. Data Products that have too big may fail. A field is required for each parameter to an event and entity.
+1. Google Tag Manager Tags are limited to having a 100 fields. Data Products that are too big may fail. A field is required for each parameter to an event and entity.
 2. This has only been tested using python3.11. The only depedencies on external packages is the requests package.
 3. There will likely be bugs.
 
