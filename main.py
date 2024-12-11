@@ -51,18 +51,31 @@ def get_schema(schema):
     headers = {'authorization': f'Bearer {access_token}'}
     response = requests.get(url, headers=headers)
 
-    if response.status_code != 200:
+    if response.status_code == 200:
+        response_json = response.json()
+        latest_version = response_json['deployments'][-1]['version']
+
+        url = f'https://console.snowplowanalytics.com/api/msc/v1/organizations/{organization_id}/data-structures/v1/{schema_hash}/versions/{latest_version}'
+        response = requests.get(url, headers=headers)
+
+        if response.status_code != 200:
+            print(f'Error: {response.status_code}')
+
+    elif response.status_code == 404:
+        print('Schema not found in Snowplow Console - trying Iglu Central')
+        # Try Iglu Central
+        schema = schema.removeprefix('iglu:')
+        url = f'http://iglucentral.com/schemas/{schema}'
+        print(url)
+        response = requests.get(url)
+
+        if response.status_code != 200:
+            print('Error: Schema not found in Iglu Central')
+            return None
+        
+    elif response.status_code != 200:
         print(f'Error: {response.status_code}')
-    
-    response_json = response.json()
-
-    latest_version = response_json['deployments'][-1]['version']
-
-    url = f'https://console.snowplowanalytics.com/api/msc/v1/organizations/{organization_id}/data-structures/v1/{schema_hash}/versions/{latest_version}'
-    response = requests.get(url, headers=headers)
-
-    if response.status_code != 200:
-        print(f'Error: {response.status_code}')
+        return None
     
     return response.json()
 
@@ -438,6 +451,7 @@ if __name__ == '__main__':
     #data_product_id = 'b6ace794-980f-42e1-8c17-51441111c912' # Media
     #data_product_id = 'a42cc8e6-7ef9-4433-853d-1c23995f4afe' # JB test
     data_product_id = 'ff5bd446-25eb-4aaf-bb8e-ded18b2fff15' # JB ecommerce demo
+    data_product_id = 'b675cefe-3be1-4d55-9538-c017c4dd6f3f'
 
     # output =  (fetch_schemas_from_data_product(get_data_products(data_product_id)))
 
