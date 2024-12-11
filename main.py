@@ -306,6 +306,17 @@ def create_gtm_template_code(data_product_json,event_entity_map):
         event_source_camel_case = convert_to_camel_case(event_source_parts[1])
 
         event_spec_event_schema = event_spec['event']['schema']
+
+        # var eventSpecificationContext = createEventSpecification({
+        #                 id: '06bb7b2b-6d18-4fd8-bbaf-6517d1caf789',
+        #                 name: 'Free Trial Signup',
+        #                 data_product_id: 'd5f1fbb3-e03a-4f31-be7d-a5ca15c98fa3',
+        #                 data_product_name: 'Growth Marketing - SaaS (ProService Demo)'
+        #         });
+
+        event_spec_context_data = f"{{id: '{event_spec['id']}',name: '{event_spec_name}',data_product_id: '{data_product_json['data'][0]['id']}',data_product_name: '{data_product_json['data'][0]['name']}'}}"
+        event_spec_context_schema = 'iglu:com.snowplowanalytics.snowplow/event_specification/jsonschema/1-0-2'
+        event_spec_context = f"[{{data: {event_spec_context_data},schema: '{event_spec_context_schema}'}}]"
         
         # Generate JavaScript code to create the properties object
         properties_code = '{'
@@ -330,7 +341,7 @@ def create_gtm_template_code(data_product_json,event_entity_map):
 
         # Format the code into a switch statement case
         formatted_code = f"case '{event_spec_name}':\n\
-            var context = [];\n\
+            var context = {event_spec_context};\n\
             {manual_context_code};\n\
             {context_code}\n\
             callInWindow('snowplow','trackSelfDescribingEvent',\n\
