@@ -305,13 +305,13 @@ def create_gtm_template_code(data_product_json,event_entity_map):
         event_source_parts = event_source.split('/')
         event_source_camel_case = convert_to_camel_case(event_source_parts[1])
 
-        event_spec_event_schema = get_schema(event_spec['event']['source'])
+        event_spec_event_schema = event_spec['event']['schema']
         
         # Generate JavaScript code to create the properties object
         properties_code = '{'
         for property in event_spec_event_schema['properties']:
             properties_code += f"'{property}':data['{event_spec_name}|{property}'],"
-        properties_code += 'context: context}'
+        properties_code += '}'
 
         # Generate JavaScript code to create the context object for a single entity
         event_spec_entities = [x for x in event_specs if x['name'] == event_spec['name']][0]['entities']['tracked']
@@ -333,8 +333,8 @@ def create_gtm_template_code(data_product_json,event_entity_map):
             var context = [];\n\
             {manual_context_code};\n\
             {context_code}\n\
-            callInWindow('__snowtype.track{event_source_camel_case}{event_spec_name_camel_case}',\n\
-            {properties_code});break;\n"
+            callInWindow('snowplow','trackSelfDescribingEvent',\n\
+            {{event: {{data:{properties_code},schema:'{event_source}'}}, 'context': context}});break;\n"
 
         persmissions_key_str = '{"type":3,"mapKey":[{"type":1,"string":"key"},{"type":1,"string":"read"},{"type":1,"string":"write"},{"type":1,"string":"execute"}],"mapValue":[{"type":1,"string":"' + f'__snowtype.track{event_source_camel_case}{event_spec_name_camel_case}' + '"},{"type":8,"boolean":true},{"type":8,"boolean":true},{"type":8,"boolean":true}]}'
         permission_keys.append(persmissions_key_str)
@@ -342,6 +342,9 @@ def create_gtm_template_code(data_product_json,event_entity_map):
         output_code += formatted_code
 
     output_code += '}\n'
+
+    persmissions_key_str = '{"type":3,"mapKey":[{"type":1,"string":"key"},{"type":1,"string":"read"},{"type":1,"string":"write"},{"type":1,"string":"execute"}],"mapValue":[{"type":1,"string":"' + f'snowplow' + '"},{"type":8,"boolean":true},{"type":8,"boolean":true},{"type":8,"boolean":true}]}'
+    permission_keys.append(persmissions_key_str)
 
     with open('./output/gtm_template_code.js', 'w') as f:
         f.write(output_code)
@@ -381,12 +384,12 @@ def combine_gtm_template_files(data_product_json):
         "id": "cvt_temp_public_id",
         "version": 1,
         "securityGroups": [],
-        "displayName": "''' + f"Snowtype GTM Tag Template for {data_product_names}" +  '''",
+        "displayName": "''' + f"Snowplow GTM Tag Template for {data_product_names}" +  '''",
         "brand": {
             "id": "brand_dummy",
             "displayName": ""
         },
-        "description": "'''+ f"A custom template for Snowtype data products based on {data_product_names}" + '''",
+        "description": "'''+ f"A custom template for a Snowplow Data Product based on {data_product_names}" + '''",
         "containerContexts": [
             "WEB"
         ]
@@ -427,7 +430,5 @@ if __name__ == '__main__':
 
     # output =  (fetch_schemas_from_data_product(get_data_products(data_product_id)))
 
-    # with open('./output/data_product.json', 'w') as f:
-    #     json.dump(output, f)
     run_template_creation(data_product_id)
     
