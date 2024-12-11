@@ -4,7 +4,6 @@ import re
 import hashlib
 import sys
 
-
 organization_id = None
 api_key_id = None
 api_key = None
@@ -392,7 +391,7 @@ def combine_gtm_template_files(data_product_json):
         gtm_template_parameters = json.load(f)
     
     if str(gtm_template_parameters).count('displayName') > 100:
-        print('Error: GTM template parameters contains over 100 fields - Please reduce the complexity of the data product and try again.')
+        print('Error: GTM template parameters contains over 100 fields. GTM has a limit of a 100 fields per tag. Please reduce the complexity of the data product and try again.')
         sys.exit(1)
 
     with open('./output/gtm_template_code.js', 'r') as f:
@@ -449,13 +448,13 @@ def run_template_creation(data_product_id):
 if __name__ == '__main__':
     access_token = get_api_token(organization_id, api_key_id, api_key)
 
-    #data_product_id = 'd5f1fbb3-e03a-4f31-be7d-a5ca15c98fa3' # Growth
-    #data_product_id = 'b6ace794-980f-42e1-8c17-51441111c912' # Media
-    #data_product_id = 'a42cc8e6-7ef9-4433-853d-1c23995f4afe' # JB test
-    data_product_id = 'ff5bd446-25eb-4aaf-bb8e-ded18b2fff15' # JB ecommerce demo
-    data_product_id = 'b675cefe-3be1-4d55-9538-c017c4dd6f3f'
+    if len(sys.argv) < 2:
+        print('Error: No data product ID provided.')
+        sys.exit(1)
+    else:
+        data_product_id = sys.argv[1]
 
-    # output =  (fetch_schemas_from_data_product(get_data_products(data_product_id)))
+    #data_product_id = 'd5f1fbb3-e03a-4f31-be7d-a5ca15c98fa3' # Growth
 
     run_template_creation(data_product_id)
     
